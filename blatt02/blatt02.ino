@@ -74,7 +74,11 @@ void loop() {
     dir = fmax(-1, 1 - 2 * modeTime);
   }
   
-  sp = 1;
+  if (on) {
+    sp = fmin(1, sp + dt);
+  } else {
+    sp = fmax(0, sp - dt);
+  }h
   
   setMotorSpeed(dir * sp);
 
