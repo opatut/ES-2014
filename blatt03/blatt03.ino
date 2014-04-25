@@ -4,7 +4,7 @@ int PIN_X = 0;
 int PIN_Z = 1;
 int PIN_REF = 2;
 int PIN_SERVO = 10;
-float SENSITIVITY = 9.1;
+float SENSITIVITY = 2.0;
 
 float xangle = 0;
 float zangle = 0;
