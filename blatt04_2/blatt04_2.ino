@@ -1,10 +1,10 @@
-#include <Servo.h>
+#include <Wire.h>
 
- 
+#define WIRE Wire
+
 int PIN_X = 0;
 int PIN_Z = 1;
 int PIN_REF = 2;
-int PIN_SERVO = 10;
 float SENSITIVITY = 2.0;
 
 float xangle = 0;
@@ -18,14 +18,6 @@ bool calibrated = false;
 
 int last_time;
 float globalTime = 0;
-
-Servo servo;
-
-void setup() {
-  last_time = millis();
-  servo.attach(PIN_SERVO);
-  servo.write(0);
-}
 
 void loop() {
   // measure time
@@ -67,6 +59,23 @@ void loop() {
   
   float servo_speed = 20.f;
   servo_angle = servo_angle * (1 - dt * servo_speed) + servo_target_angle * dt * servo_speed;
-  
-  servo.write(90 + servo_angle);
+}
+
+
+
+
+void setup() {
+  last_time = millis();
+  WIRE.begin(2);
+  WIRE.onRequest(requestEvent);
+  pinMode(PIN_LED, OUTPUT);
+  Serial.begin(9600);
+  Serial.println("Started");
+}
+
+void requestEvent() {
+  int a = 90 + (int)servo_angle;
+  WIRE.write((byte)a);
+  Serial.print("Sending angle: ");
+  Serial.println(a);
 }
