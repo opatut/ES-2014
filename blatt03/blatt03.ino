@@ -1,5 +1,4 @@
 #include <Servo.h>
-
  
 int PIN_X = 0;
 int PIN_Z = 1;
@@ -9,22 +8,20 @@ float SENSITIVITY = 2.0;
 
 float xangle = 0;
 float zangle = 0;
-float servo_target_angle = 0;
 float servo_angle = 0;
-
-float calib_x = 0;
-float calib_z = 0;
-bool calibrated = false;
+float xrot_avg = 0;
+float zrot_avg = 0;
 
 int last_time;
-float globalTime = 0;
+int measure_count = 0;
+bool calibrated = false;
 
 Servo servo;
 
 void setup() {
+  Serial.begin(9600);
   last_time = millis();
   servo.attach(PIN_SERVO);
-  servo.write(0);
 }
 
 void loop() {
@@ -33,8 +30,6 @@ void loop() {
   int dt_millis = time - last_time;
   float dt = dt_millis * 0.001;
   last_time = time;
-  
-  globalTime += dt;
   
   int ref = analogRead(PIN_REF);
   int xval = analogRead(PIN_X);
@@ -47,26 +42,25 @@ void loop() {
   float xrot = (vX - vRef) / SENSITIVITY;
   float zrot = (vZ - vRef) / SENSITIVITY;
   
-  xangle += (xrot - calib_x) * dt;
-  zangle += (zrot - calib_z) * dt;
-  
-  if(globalTime < 1.0) {
-    return;
-  }
- 
-  if(!calibrated) {
+  if (time < 100) {
+    measure_count++;
+    xrot_avg = xrot_avg + xrot;
+    zrot_avg = zrot_avg + zrot;
+  } else if (!calibrated) {
     calibrated = true;
-    calib_x = xangle;
-    calib_z = zangle;
-  } 
+    xrot_avg = xrot_avg / measure_count;
+    zrot_avg = zrot_avg / measure_count;
+  }
+  
+  xangle += (xrot - xrot_avg) * dt;
+  zangle += (zrot - zrot_avg) * dt;
   
   // limit servo angle
-  servo_target_angle += (zrot - calib_z) * dt;
-  if(servo_target_angle > 65) servo_target_angle = 65;
-  if(servo_target_angle < -65) servo_target_angle = -65;
+  servo_angle += (zrot - zrot_avg) * dt;
+  if(servo_angle > 65) servo_angle = 65;
+  if(servo_angle < -65) servo_angle = -65;
   
-  float servo_speed = 20.f;
-  servo_angle = servo_angle * (1 - dt * servo_speed) + servo_target_angle * dt * servo_speed;
+  Serial.println(zrot_avg);
   
   servo.write(90 + servo_angle);
 }
