@@ -1,19 +1,21 @@
 #define XB Serial1
 
-#define PARTNER_ADDRESS_LOW "40A4D71A"
+#define PARTNER_ADDRESS_LOW "40A099CD"
 #define PARTNER_ADDRESS_HIGH "13A200"
 
 #define PIN_BTN 8
-#define PIN_LED 13
+#define PIN_MYLED 2
 
 String myAddressLow;
 String myAddressHigh;
 String myNodeId;
 
-bool buttonWasDown = false;
+int ledBrightness = 0;
+int moving = 0;
 
-int blinksRemaining = 0;
-int blinkMillis = 0;
+//bool buttonWasDown = false;
+//int blinksRemaining = 0;
+//int blinkMillis = 0;
 
 /* MODE SETTING */
 
@@ -29,6 +31,7 @@ void ensureConfigMode(bool configuration) {
 
 void modeConfigure() {
   if(!isConfiguringMode) {
+    empty();
     XB.print("+++");
     isConfiguringMode = true;
     Serial.println("Entering configuration mode ...");
@@ -46,6 +49,7 @@ void modeCommunicate() {
     delay(500);
     
     expectOK();
+    empty();
   }
 }
 
@@ -60,8 +64,8 @@ String readRegister(String id) {
   int count = XB.available() - 1; // do not read the newline
   char* result = new char[count+1];
   XB.readBytes(result, count); // read our content
-  while(XB.read() != -1); // read the data trash
-    
+  empty();
+  
   result[count] = 0; // terminate string
   return result;
 }
@@ -76,10 +80,18 @@ void writeRegister(String id, String value) {
   expectOK();
 }
 
+// read trash
+void empty() {
+  while(XB.available()) {
+    byte x = XB.read();
+    Serial.println("TRASH: " + (char)x + " (" + x + ")");
+  }
+}
+
 void expectOK() {
   char result[2];
   XB.readBytes(result, 2);
-  while(XB.read() != -1); // read the data trash
+  empty();
   
   if(result[0] == 'O' && result[1] == 'K') {
     Serial.println("OK!");
@@ -120,12 +132,21 @@ void button_pressed() {
 
 void signal_received() {
   Serial.println("Received control byte");
-  blinksRemaining = 4;
+  if(moving != 0) return;
+  moving = (ledBrightness == 0 ? 1 : -1);
+  //blinksRemaining = 4;
+}
+
+void fading_done() {
+  Serial.println("Finished fading");
+  ensureConfigMode(false);
+  XB.write("1");
 }
 
 void setup() {  
   pinMode(PIN_BTN, INPUT_PULLUP);
-  pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_MYLED, OUTPUT);
+  analogWrite(PIN_MYLED, 200);
   
   Serial.begin(9600);
   XB.begin(9600);
@@ -137,6 +158,25 @@ void setup() {
 }
 
 void loop() {
+  ensureConfigMode(false);
+  if(XB.available()) {
+    while(XB.read() != -1);
+    signal_received();
+  }
+  
+  if(moving != 0) {
+    ledBrightness += moving;
+    if(ledBrightness == 255 || ledBrightness == 0) {
+      moving = 0;
+      fading_done();
+    }
+  }  
+  Serial.print(moving);
+  Serial.print(" ");
+  Serial.println(ledBrightness);
+  
+  analogWrite(PIN_MYLED, ledBrightness);
+  /*
   bool buttonDown = !digitalRead(PIN_BTN);
   if(!buttonWasDown && buttonDown) {
      button_pressed();
@@ -152,8 +192,8 @@ void loop() {
     }
     bool led = blinkMillis > 100;
     digitalWrite(PIN_LED, !led);
-  }
+  } */
 
   
-  delay(50);
+  //delay(50);
 }
