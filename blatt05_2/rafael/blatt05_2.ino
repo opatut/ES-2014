@@ -1,19 +1,13 @@
 #define XB Serial1
 
-#define PARTNER_ADDRESS_LOW "40A0981C"
-#define PARTNER_ADDRESS_HIGH "13A200"
-
-#define PIN_BTN 8
-#define PIN_LED 13
+#define ADDRESS_HIGH "13A200"
 
 String myAddressLow;
 String myAddressHigh;
 String myNodeId;
+String currentAddress;
 
-bool buttonWasDown = false;
-
-int blinksRemaining = 0;
-int blinkMillis = 0;
+String addresses[] = {"40A0988F", "40A0981C", "", "", "40A4D7D0", "", "40A099CD", "", "", "", ""};
 
 /* MODE SETTING */
 
@@ -55,7 +49,7 @@ String readRegister(String id) {
   ensureConfigMode(true);
   XB.println("AT" + id);
   
-  Serial.println("Reading register " + id + "... ");
+  //Serial.println("Reading register " + id + "... ");
   delay(500);
   
   int count = XB.available() - 1; // do not read the newline
@@ -102,63 +96,64 @@ void getMyAddress() {
   Serial.println("Node ID: " + myNodeId);
 }
 
-void setDestinationAddress(String high, String low) {
-  ensureConfigMode(true);
-  writeRegister("DH", high);
-  writeRegister("DL", low);
+void setDestinationAddress(String low) {
+  if (currentAddress != low) {
+    ensureConfigMode(true);
+    writeRegister("DH", ADDRESS_HIGH);
+    writeRegister("DL", low);
+    
+    currentAddress = readRegister("DL");
   
-  Serial.println("Destination address set: " + readRegister("DH") + " " + readRegister("DL"));
+    Serial.println("Destination address changed: " + readRegister("DH") + " " + currentAddress);
+  }
 }
 
-/* LED/BUTTON STUFF */
-
-void button_pressed() {
-  // send toggle signal
-  Serial.println("Sending control byte");
+void sendMessage(int node, String msg) {
+  String address = addresses[node-1];
+  if (address == "") {
+    Serial.println("Address for node  " + node + " unknown :(");
+    return;
+  }
+  setDestinationAddress(addresses[node-1]);
   ensureConfigMode(false);
-  XB.println("1");
-}
-
-void signal_received() {
-  Serial.println("Received control byte");
-  blinksRemaining = 4;
+  XB.println(myNodeId + "#" + msg);
+  Serial.println("NODE_" + (String)node + " > " + msg);
 }
 
 void setup() {  
-  pinMode(PIN_BTN, INPUT_PULLUP);
-  pinMode(PIN_LED, OUTPUT);
-  
   Serial.begin(9600);
   XB.begin(9600);
   while(XB.read() != -1); // read the data trash
-  Serial.println("Initializing ...");
   delay(1500);
   getMyAddress();
-  setDestinationAddress(PARTNER_ADDRESS_HIGH, PARTNER_ADDRESS_LOW);
 }
 
 void loop() {
   if (XB.available()) {
     ensureConfigMode(false);
-    while(XB.read() != -1)
-    signal_received();
-  }
-  
-  bool buttonDown = !digitalRead(PIN_BTN);
-  if(!buttonWasDown && buttonDown) {
-     button_pressed();
-  }
-  buttonWasDown = buttonDown;
-  
-  // blink
-  if(blinksRemaining > 0) {
-    blinkMillis -= 50;
-    if(blinkMillis <= 0) {
-      blinkMillis += 200;
-      blinksRemaining--;
+    String result;
+    while (XB.available()) {
+      result += (char)XB.read();
+      delay(20);
     }
-    bool led = blinkMillis > 100;
-    digitalWrite(PIN_LED, !led);
+    bool valid = (result.substring(0, 5) == "NODE_");
+    if (valid) {
+      String node = result.substring(0, 7);
+      String msg = result.substring(8, result.length());
+      Serial.print("["+node+"] " + msg);
+    } else {
+      Serial.println("Invalid message: " + result);
+    }
+  }
+  
+  if (Serial.available()) {
+     String msg = "";
+     while(Serial.available()) {
+       msg += (char)Serial.read();
+       delay(20);
+     }
+     int node = msg.substring(0,2).toInt();
+     sendMessage(node, msg.substring(3, msg.length()));
   }
   
   delay(50);
