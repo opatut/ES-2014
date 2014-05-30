@@ -1,0 +1,130 @@
+#include <SPI.h>
+#include "ascii.h"
+
+#define OUT_RST 5
+#define OUT_LED 3
+#define OUT_DC 2
+#define OUT_SCE 10 // 4, 10, 52
+
+#define WIDTH 84
+#define HEIGHT 48
+#define BANKS 504
+#define PIXELS 4032
+
+byte pixbuf[BANKS]; 
+String text = "Hallo Welt";
+String texts[] = {"Wir sind", "die Besten!", "#$@#!*(&"};
+int texts_count = 3;
+int current_text = 0;
+int current_text_time = 0;
+int last_time = 0;
+
+void reset() {
+  digitalWrite(OUT_RST, 0);
+  delay(500);
+  digitalWrite(OUT_RST, 1);
+}
+
+void setCommandMode(bool cmdMode) {
+  digitalWrite(OUT_DC, !cmdMode);
+}
+
+void sendCommand(int cmd) {
+  SPI.transfer(OUT_SCE, cmd);
+}
+
+void printChar(char c, int x, int y) {
+  byte* chars = font[(int)c - font_offset];
+  for(int dx = 0; dx < 6; ++dx) {
+    for(int dy = 0; dy < 8; ++dy) {
+      setPixel(x + dx, y + dy, chars[dx] & (1 << dy));
+    }
+  }
+}
+
+void initialize() {
+  pinMode(OUT_LED, OUTPUT);
+  pinMode(OUT_RST, OUTPUT);
+  pinMode(OUT_DC, OUTPUT);
+  
+  digitalWrite(OUT_LED, 0); // turn LED off
+  
+  reset();
+ 
+  SPI.begin(OUT_SCE);
+  SPI.setClockDivider(OUT_SCE, 84);
+  delay(100); 
+  
+  setCommandMode(true);
+  delay(100);
+  sendCommand(0x21); // FUNCTION SET
+  sendCommand(0x14); // SET BIAS
+  sendCommand(0xE0); // SET CONTRAST
+  sendCommand(0x20); // FUNCTION SET
+  sendCommand(0x0C); // SET DISPLAY MODE
+  delay(100);
+  sendCommand(0x80); // SET X
+  sendCommand(0x40); // SET Y
+  delay(100);
+  
+  setCommandMode(false);
+  delay(100);
+}
+
+void clearScreen() {
+  for(int i = 0; i < BANKS; ++i) {
+    pixbuf[i] = 0x00;
+  }
+}
+
+void updateScreen() {
+  for(int i = 0; i < BANKS; ++i) {
+    SPI.transfer(OUT_SCE, pixbuf[i]);
+  }    
+}
+
+void setPixel(int x, int y, bool value) {
+  if(x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
+  
+  int row = y / 8;
+  int index = row * WIDTH + x;
+  int bitnum = y % 8;
+  int bitmask = 1 << bitnum;
+  
+  if(value) {
+    pixbuf[index] |= bitmask;
+  } else {
+    pixbuf[index] &= ~bitmask;
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
+  initialize();
+  last_time = millis();
+}
+
+void loop() {
+  digitalWrite(OUT_LED, 1);
+  
+  int time = millis();
+  int dt = time - last_time;
+  last_time = time;
+  
+  current_text_time += dt;
+  if(current_text_time > 2000) {
+    current_text = (current_text + 1) % texts_count;
+    current_text_time = 0;
+  }
+  
+  float l = min(1, min(current_text_time * 0.001 * 2, (2 - current_text_time * 0.001) * 2)); 
+  text = texts[current_text].substring(0, int(ceil(l * texts[current_text].length()))) + "_";
+  
+  clearScreen();
+  
+  for(int i = 0; i < text.length() - (current_text_time % 500 < 250 ? 1 : 0); ++i) {
+    printChar(text.charAt(i), WIDTH / 2 - texts[current_text].length() * 6 / 2 + i * 6, HEIGHT / 2 - 4);
+  }
+  
+  updateScreen();
+}
